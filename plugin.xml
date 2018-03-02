@@ -49,5 +49,5 @@
             <runs />
         </js-module>
     </platform>
-    <dependency id="cordova-plugin-file" version="https://github.com/FairyDwarves/cordova-plugin-file.git"/>
+    <dependency id="cordova-plugin-file" url="https://github.com/FairyDwarves/cordova-plugin-file.git"/>
 </plugin>
