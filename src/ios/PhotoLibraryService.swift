@@ -488,15 +488,7 @@ final class PhotoLibraryService {
         }
 
         // Permission was manually denied by user, open settings screen
-        let settingsUrl = URL(string: UIApplicationOpenSettingsURLString)
-        if let url = settingsUrl {
-            UIApplication.shared.openURL(url)
-            // TODO: run callback only when return ?
-            // Do not call success, as the app will be restarted when user changes permission
-        } else {
-            failure("could not open settings url")
-        }
-
+        failure("Authorization denied by user");
     }
 
     // TODO: implement with PHPhotoLibrary (UIImageWriteToSavedPhotosAlbum) instead of deprecated ALAssetsLibrary,
