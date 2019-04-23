@@ -209,8 +209,8 @@ final class PhotoLibraryService {
             
             if(mediaType == "image") {
                 PHImageManager.default().requestImageData(for: asset, options: self.imageRequestOptions) {
-                    (imageData: Data?, dataUTI: String?, orientation: UIImageOrientation, info: [AnyHashable: Any]?) in
-                    
+                    (imageData: Data?, dataUTI: String?, orientation: UIImage.Orientation, info: [AnyHashable: Any]?) in
+
                     if(imageData == nil) {
                         completion(nil)
                     }
@@ -222,9 +222,9 @@ final class PhotoLibraryService {
                 }
             }
             else if(mediaType == "video") {
-                
+
                 PHImageManager.default().requestAVAsset(forVideo: asset, options: nil, resultHandler: { (avAsset: AVAsset?, avAudioMix: AVAudioMix?, info: [AnyHashable : Any]?) in
-                    
+
                     if( avAsset is AVURLAsset ) {
                         let video_asset = avAsset as! AVURLAsset
                         let url = URL(fileURLWithPath: video_asset.url.relativePath)
@@ -234,7 +234,7 @@ final class PhotoLibraryService {
                         let token = info?["PHImageFileSandboxExtensionTokenKey"] as! String
                         let path = token.components(separatedBy: ";").last
                         completion(path)
-                    }                    
+                    }
                 })
             }
             else if(mediaType == "audio") {
@@ -246,26 +246,26 @@ final class PhotoLibraryService {
             }
         })
     }
-    
-    
+
+
     private func assetToLibraryItem(asset: PHAsset, useOriginalFileNames: Bool, includeAlbumData: Bool) -> NSMutableDictionary {
         let libraryItem = NSMutableDictionary()
-        
+
         libraryItem["id"] = asset.localIdentifier
         libraryItem["fileName"] = useOriginalFileNames ? asset.originalFileName : asset.fileName // originalFilename is much slower
         libraryItem["width"] = asset.pixelWidth
         libraryItem["height"] = asset.pixelHeight
-        
+
         let fname = libraryItem["fileName"] as! String
         libraryItem["mimeType"] = self.mimeTypeForPath(path: fname)
-        
+
         libraryItem["creationDate"] = self.dateFormatter.string(from: asset.creationDate!)
         if let location = asset.location {
             libraryItem["latitude"] = location.coordinate.latitude
             libraryItem["longitude"] = location.coordinate.longitude
         }
-        
-        
+
+
         if includeAlbumData {
             // This is pretty slow, use only when needed
             var assetCollectionIds = [String]()
@@ -277,35 +277,35 @@ final class PhotoLibraryService {
             }
             libraryItem["albumIds"] = assetCollectionIds
         }
-        
+
         return libraryItem
     }
-    
+
     func getAlbums() -> [NSDictionary] {
-        
+
         var result = [NSDictionary]()
-        
+
         for assetCollectionType in assetCollectionTypes {
-            
+
             let fetchResult = PHAssetCollection.fetchAssetCollections(with: assetCollectionType, subtype: .any, options: nil)
-            
+
             fetchResult.enumerateObjects({ (assetCollection: PHAssetCollection, index, stop) in
-                
+
                 let albumItem = NSMutableDictionary()
-                
+
                 albumItem["id"] = assetCollection.localIdentifier
                 albumItem["title"] = assetCollection.localizedTitle
-                
+
                 result.append(albumItem)
-                
+
             });
-            
+
         }
-        
+
         return result;
-        
+
     }
-    
+
     func getThumbnail(_ photoId: String, thumbnailWidth: Int, thumbnailHeight: Int, quality: Float, completion: @escaping (_ result: PictureData?) -> Void) {
 
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [photoId], options: self.fetchOptions)
@@ -349,9 +349,9 @@ final class PhotoLibraryService {
             (obj: AnyObject, idx: Int, stop: UnsafeMutablePointer<ObjCBool>) -> Void in
 
             let asset = obj as! PHAsset
-            
+
             PHImageManager.default().requestImageData(for: asset, options: self.imageRequestOptions) {
-                (imageData: Data?, dataUTI: String?, orientation: UIImageOrientation, info: [AnyHashable: Any]?) in
+                (imageData: Data?, dataUTI: String?, orientation: UIImage.Orientation, info: [AnyHashable: Any]?) in
 
                 guard let image = imageData != nil ? UIImage(data: imageData!) : nil else {
                     completion(nil)
@@ -364,26 +364,26 @@ final class PhotoLibraryService {
             }
         })
     }
-    
-    
+
+
     func getLibraryItem(_ itemId: String, mimeType: String, completion: @escaping (_ base64: String?) -> Void) {
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [itemId], options: self.fetchOptions)
         if fetchResult.count == 0 {
             completion(nil)
             return
         }
-        
+
         // TODO: data should be returned as chunks, even for pics.
         // a massive data object might increase RAM usage too much, and iOS will then kill the app.
         fetchResult.enumerateObjects({
             (obj: AnyObject, idx: Int, stop: UnsafeMutablePointer<ObjCBool>) -> Void in
             let asset = obj as! PHAsset
-            
-            let mediaType = mimeType.components(separatedBy: "/")[0] 
-            
+
+            let mediaType = mimeType.components(separatedBy: "/")[0]
+
             if(mediaType == "image") {
                 PHImageManager.default().requestImageData(for: asset, options: self.imageRequestOptions) {
-                    (imageData: Data?, dataUTI: String?, orientation: UIImageOrientation, info: [AnyHashable: Any]?) in
+                    (imageData: Data?, dataUTI: String?, orientation: UIImage.Orientation, info: [AnyHashable: Any]?) in
 
                     if(imageData == nil) {
                         completion(nil)
@@ -396,12 +396,12 @@ final class PhotoLibraryService {
                 }
             }
             else if(mediaType == "video") {
-                
+
                 PHImageManager.default().requestAVAsset(forVideo: asset, options: nil, resultHandler: { (avAsset: AVAsset?, avAudioMix: AVAudioMix?, info: [AnyHashable : Any]?) in
-                    
+
                     let video_asset = avAsset as! AVURLAsset
                     let url = URL(fileURLWithPath: video_asset.url.relativePath)
-                    
+
                     do {
                         let video_data = try Data(contentsOf: url)
                         let video_base64 = video_data.base64EncodedString()
@@ -420,29 +420,29 @@ final class PhotoLibraryService {
             else {
                 completion(nil) // unknown
             }
-            
+
         })
     }
-    
-    
+
+
     func getVideo(_ videoId: String, completion: @escaping (_ result: PictureData?) -> Void) {
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [videoId], options: self.fetchOptions)
         if fetchResult.count == 0 {
             completion(nil)
             return
         }
-     
+
         fetchResult.enumerateObjects({
             (obj: AnyObject, idx: Int, stop: UnsafeMutablePointer<ObjCBool>) -> Void in
-            
+
             let asset = obj as! PHAsset
-            
-            
+
+
             PHImageManager.default().requestAVAsset(forVideo: asset, options: nil, resultHandler: { (avAsset: AVAsset?, avAudioMix: AVAudioMix?, info: [AnyHashable : Any]?) in
-                
+
                 let video_asset = avAsset as! AVURLAsset
                 let url = URL(fileURLWithPath: video_asset.url.relativePath)
-                
+
                 do {
                     let video_data = try Data(contentsOf: url)
                     let pic_data = PictureData(data: video_data, mimeType: "video/quicktime") // TODO: get mime from info dic ?
@@ -454,7 +454,7 @@ final class PhotoLibraryService {
             })
         })
     }
-    
+
 
     func stopCaching() {
 
@@ -667,7 +667,7 @@ final class PhotoLibraryService {
         var data: Data
         var mimeType: String
     }
-    
+
     // TODO: currently seems useless
     enum PhotoLibraryError: Error, CustomStringConvertible {
         case error(description: String)
@@ -682,10 +682,10 @@ final class PhotoLibraryService {
     fileprivate func getDataFromURL(_ url: String) throws -> Data {
         if url.hasPrefix("data:") {
 
-            guard let match = self.dataURLPattern.firstMatch(in: url, options: NSRegularExpression.MatchingOptions(rawValue: 0), range: NSMakeRange(0, url.characters.count)) else { // TODO: firstMatchInString seems to be slow for unknown reason
+            guard let match = self.dataURLPattern.firstMatch(in: url, options: NSRegularExpression.MatchingOptions(rawValue: 0), range: NSMakeRange(0, url.count)) else { // TODO: firstMatchInString seems to be slow for unknown reason
                 throw PhotoLibraryError.error(description: "The dataURL could not be parsed")
             }
-            let dataPos = match.rangeAt(0).length
+            let dataPos = match.range(at: 0).length
             let base64 = (url as NSString).substring(from: dataPos)
             guard let decoded = Data(base64Encoded: base64, options: NSData.Base64DecodingOptions(rawValue: 0)) else {
                 throw PhotoLibraryError.error(description: "The dataURL could not be decoded")
@@ -744,10 +744,10 @@ final class PhotoLibraryService {
         var mimeType: String?
 
         if (imageHasAlpha(image)){
-            data = UIImagePNGRepresentation(image)
+            data = image.pngData()
             mimeType = data != nil ? "image/png" : nil
         } else {
-            data = UIImageJPEGRepresentation(image, CGFloat(quality))
+            data = image.jpegData(compressionQuality: CGFloat(quality))
             mimeType = data != nil ? "image/jpeg" : nil
         }
 
