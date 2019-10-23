@@ -1,5 +1,7 @@
 package com.terikon.cordova.photolibrary;
 
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -12,7 +14,6 @@ import android.net.Uri;
 import android.os.Environment;
 import android.os.SystemClock;
 import android.provider.MediaStore;
-import android.util.Base64;
 
 import org.apache.cordova.CordovaInterface;
 import org.json.JSONArray;
@@ -22,22 +23,19 @@ import org.json.JSONObject;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URI;
 import java.net.URL;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class PhotoLibraryService {
@@ -551,33 +549,70 @@ public class PhotoLibraryService {
     }
     return albumDirectory;
   }
-
-  private File getImageFileName(File albumDirectory, String extension) {
-    Calendar calendar = Calendar.getInstance();
-    String dateStr = calendar.get(Calendar.YEAR) +
-      "-" + calendar.get(Calendar.MONTH) +
-      "-" + calendar.get(Calendar.DAY_OF_MONTH);
+  /**
+   * Android Sdk 29+
+   *
+   * TODO: need update relative path when cordova can support sdk 29.
+   *
+   */
+  private String saveNewImageForSdk29Plus(final Context context, final File album, final String url, final String extension) throws IOException {
+    SimpleDateFormat timestamp = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss");
+    String dateStr = timestamp.format(new Date());
     int i = 1;
-    File result;
+    String fileName;
     do {
-      String fileName = dateStr + "-" + i + extension;
+      fileName = dateStr + "-" + i;
       i += 1;
-      result = new File(albumDirectory, fileName);
-    } while (result.exists());
-    return result;
+    } while (new File(album.getParentFile(), fileName + extension).exists());
+    String path;
+    try {
+      path = java.net.URLDecoder.decode(url.replace("file://", ""), StandardCharsets.UTF_8.name());
+    } catch (Exception e) {
+      throw new IllegalArgumentException("The dataURL could not be decoded", e);
+    }
+
+    ContentResolver contentResolver = context.getContentResolver();
+    String newContentUri = MediaStore.Images.Media.insertImage(contentResolver, path, album.getName() + "-" + fileName, "");
+    ContentValues values = new ContentValues();
+    values.put( MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis() );
+    values.put( MediaStore.Images.Media.BUCKET_ID, album.getAbsolutePath().hashCode() );
+    values.put( MediaStore.Images.Media.BUCKET_DISPLAY_NAME, album.getName() );
+
+    int affactedLines = contentResolver.update(Uri.parse(newContentUri), values, null, null);
+
+    return path;
   }
 
-  private void addFileToMediaLibrary(Context context, File file, final FilePathRunnable completion) {
+  /**
+   * Try to create image file under album. Return null if it failed.
+   */
+  private File getImageInAlbum(File albumDirectory, String extension){
+    SimpleDateFormat timestamp = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss");
+    String dateStr = timestamp.format(new Date());
+    int i = 1;
+    File result;
+    String fileName;
+    do {
+      fileName = dateStr + "-" + i;
+      i += 1;
+      result = new File(albumDirectory, fileName + extension);
+    } while (result.exists());
+    try {
+      result.createNewFile();
 
-    String filePath = file.getAbsolutePath();
+      return result;
+    } catch (IOException ioe) {
+      return null;
+    }
+  }
 
+  private void addFileToMediaLibrary(Context context, String filePath, final FilePathRunnable completion) {
     MediaScannerConnection.scanFile(context, new String[]{filePath}, null, new MediaScannerConnection.OnScanCompletedListener() {
       @Override
       public void onScanCompleted(String path, Uri uri) {
         completion.run(path);
       }
     });
-
   }
 
   private Map<String, String> imageMimeToExtension = new HashMap<String, String>(){{
@@ -594,62 +629,22 @@ public class PhotoLibraryService {
 
     File albumDirectory = makeAlbumInPhotoLibrary(album);
     File targetFile;
-
-    if (url.startsWith("data:")) {
-
-      Matcher matcher = dataURLPattern.matcher(url);
-      if (!matcher.find()) {
-        throw new IllegalArgumentException("The dataURL is in incorrect format");
+    String extension;
+    extension = url.contains(".") ? url.substring(url.lastIndexOf(".")) : "";
+    File imageFile = getImageInAlbum(albumDirectory, extension);
+    String savedMediaPath;
+    if (imageFile != null) {
+      try (FileOutputStream os = new FileOutputStream(imageFile);
+           InputStream is = new URL(url).openStream()) {
+        copyStream(is, os);
+        os.flush();
+        savedMediaPath = imageFile.getAbsolutePath();
       }
-      String mime = matcher.group(2);
-      int dataPos = matcher.end();
-
-      String base64 = url.substring(dataPos); // Use substring and not replace to keep memory footprint small
-      byte[] decoded = Base64.decode(base64, Base64.DEFAULT);
-
-      if (decoded == null) {
-        throw new IllegalArgumentException("The dataURL could not be decoded");
-      }
-
-      String extension = mimeToExtension.get(mime);
-      if (extension == null) {
-        extension = "." + mime;
-      }
-
-      targetFile = getImageFileName(albumDirectory, extension);
-
-      FileOutputStream os = new FileOutputStream(targetFile);
-
-      os.write(decoded);
-
-      os.flush();
-      os.close();
-
     } else {
-
-      String extension = url.contains(".") ? url.substring(url.lastIndexOf(".")) : "";
-      targetFile = getImageFileName(albumDirectory, extension);
-
-      InputStream is;
-      FileOutputStream os = new FileOutputStream(targetFile);
-
-      if(url.startsWith("file:///android_asset/")) {
-        String assetUrl = url.replace("file:///android_asset/", "");
-        is = cordova.getActivity().getApplicationContext().getAssets().open(assetUrl);
-      } else {
-        is = new URL(url).openStream();
-      }
-
-      copyStream(is, os);
-
-      os.flush();
-      os.close();
-      is.close();
-
+      savedMediaPath = this.saveNewImageForSdk29Plus(context, albumDirectory, url, extension);
     }
 
-    addFileToMediaLibrary(context, targetFile, completion);
-
+    addFileToMediaLibrary(context, savedMediaPath, completion);
   }
 
   public interface ChunkResultRunnable {
