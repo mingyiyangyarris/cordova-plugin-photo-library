@@ -1,7 +1,5 @@
 package com.terikon.cordova.photolibrary;
 
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -29,7 +27,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -194,7 +191,7 @@ public class PhotoLibraryService {
   public void saveImage(final Context context, final CordovaInterface cordova, final String url, String album, final JSONObjectRunnable completion)
     throws IOException, URISyntaxException {
 
-    saveMedia(context, cordova, url, album, imageMimeToExtension, new FilePathRunnable() {
+    saveMedia(context, url, album, new FilePathRunnable() {
       @Override
       public void run(String filePath) {
         try {
@@ -217,7 +214,7 @@ public class PhotoLibraryService {
   public void saveVideo(final Context context, final CordovaInterface cordova, String url, String album)
     throws IOException, URISyntaxException {
 
-    saveMedia(context, cordova, url, album, videMimeToExtension, new FilePathRunnable() {
+    saveMedia(context, url, album, new FilePathRunnable() {
       @Override
       public void run(String filePath) {
         // TODO: call queryLibrary and return libraryItem of what was saved
@@ -549,44 +546,11 @@ public class PhotoLibraryService {
     }
     return albumDirectory;
   }
-  /**
-   * Android Sdk 29+
-   *
-   * TODO: need update relative path when cordova can support sdk 29.
-   *
-   */
-  private String saveNewImageForSdk29Plus(final Context context, final File album, final String url, final String extension) throws IOException {
-    SimpleDateFormat timestamp = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss");
-    String dateStr = timestamp.format(new Date());
-    int i = 1;
-    String fileName;
-    do {
-      fileName = dateStr + "-" + i;
-      i += 1;
-    } while (new File(album.getParentFile(), fileName + extension).exists());
-    String path;
-    try {
-      path = java.net.URLDecoder.decode(url.replace("file://", ""), StandardCharsets.UTF_8.name());
-    } catch (Exception e) {
-      throw new IllegalArgumentException("The dataURL could not be decoded", e);
-    }
-
-    ContentResolver contentResolver = context.getContentResolver();
-    String newContentUri = MediaStore.Images.Media.insertImage(contentResolver, path, album.getName() + "-" + fileName, "");
-    ContentValues values = new ContentValues();
-    values.put( MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis() );
-    values.put( MediaStore.Images.Media.BUCKET_ID, album.getAbsolutePath().hashCode() );
-    values.put( MediaStore.Images.Media.BUCKET_DISPLAY_NAME, album.getName() );
-
-    int affactedLines = contentResolver.update(Uri.parse(newContentUri), values, null, null);
-
-    return path;
-  }
 
   /**
    * Try to create image file under album. Return null if it failed.
    */
-  private File getImageInAlbum(File albumDirectory, String extension){
+  private File getMediaInAlbum(File albumDirectory, String extension) throws IOException{
     SimpleDateFormat timestamp = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss");
     String dateStr = timestamp.format(new Date());
     int i = 1;
@@ -597,13 +561,9 @@ public class PhotoLibraryService {
       i += 1;
       result = new File(albumDirectory, fileName + extension);
     } while (result.exists());
-    try {
       result.createNewFile();
 
       return result;
-    } catch (IOException ioe) {
-      return null;
-    }
   }
 
   private void addFileToMediaLibrary(Context context, String filePath, final FilePathRunnable completion) {
@@ -624,27 +584,21 @@ public class PhotoLibraryService {
     put("ogg", ".ogv");
   }};
 
-  private void saveMedia(Context context, CordovaInterface cordova, String url, String album, Map<String, String> mimeToExtension, FilePathRunnable completion)
-    throws IOException, URISyntaxException {
+  private void saveMedia(Context context, String url, String album, FilePathRunnable completion)
+    throws IOException {
 
     File albumDirectory = makeAlbumInPhotoLibrary(album);
-    File targetFile;
     String extension;
     extension = url.contains(".") ? url.substring(url.lastIndexOf(".")) : "";
-    File imageFile = getImageInAlbum(albumDirectory, extension);
+    File destFile = getMediaInAlbum(albumDirectory, extension);
     String savedMediaPath;
-    if (imageFile != null) {
-      try (FileOutputStream os = new FileOutputStream(imageFile);
-           InputStream is = new URL(url).openStream()) {
-        copyStream(is, os);
-        os.flush();
-        savedMediaPath = imageFile.getAbsolutePath();
-      }
-    } else {
-      savedMediaPath = this.saveNewImageForSdk29Plus(context, albumDirectory, url, extension);
+    try (FileOutputStream os = new FileOutputStream(destFile);
+         InputStream is = new URL(url).openStream()) {
+      copyStream(is, os);
+      os.flush();
     }
 
-    addFileToMediaLibrary(context, savedMediaPath, completion);
+    addFileToMediaLibrary(context, destFile.getAbsolutePath(), completion);
   }
 
   public interface ChunkResultRunnable {
